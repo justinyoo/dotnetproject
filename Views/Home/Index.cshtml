@@ -1,0 +1,226 @@
+﻿@model dotnetproject.Models.SpeechToTextModel
+
+@{
+    ViewBag.Title = "Speech to Text";
+}
+@{
+    ViewData["Title"] = "Home Page";
+}
+
+
+<!-- Добавляем элементы для записи с микрофона -->
+<button id="startRecording">Start Recording</button>
+<button id="stopRecording">Stop Recording</button>
+
+<br />
+<button id="sendText">Send</button>
+
+
+<div>
+    <h3>Speech Text:</h3>
+    <div id="speechResults"></div>
+</div>
+
+<audio id="audioPlayer" controls style="display: none;"></audio>
+
+
+<div>
+    <h3>Answer:</h3>
+    <div id="answer"></div>
+</div>
+
+
+@*<button id="assessPronunciation">Start Recording Pronunciation</button>
+
+ <div>
+    <h3>Pronunciation Assessment:</h3>
+    <div id="pronunciationResults"></div>
+</div>
+
+
+
+<h1>Speech Pronunciation Assessment</h1>
+
+<div>
+    <label for="textToAssess">Enter Text for Pronunciation Assessment:</label>
+    <textarea id="textToAssess" rows="4" cols="50"></textarea>
+</div>
+
+<button id="assessButton">Check Pronunciation</button>
+
+<div>
+    <h2>Assessment Results:</h2>
+    <p id="pronunciationScore">Pronunciation Score: <span id="pronScore"></span></p>
+    <p id="accuracyScore">Accuracy Score: <span id="accScore"></span></p>
+    <p id="completenessScore">Completeness Score: <span id="compScore"></span></p>
+    <p id="fluencyScore">Fluency Score: <span id="fluency"></span></p>
+    <p id="prosodyScore">Prosody Score: <span id="prosody"></span></p>
+    <h3>Pronunciation Results:</h3>
+    <ul id="pronunciationResults"></ul>
+    <p id="details">Details: <span id="assessmentDetails"></span></p>
+    <p id="error" style="color: red;"></p>
+</div> *@
+
+<script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+
+<script>
+    var recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    var startRecordingButton = document.getElementById('startRecording');
+    var stopRecordingButton = document.getElementById('stopRecording');
+    var speechResultsDiv = document.getElementById('speechResults');
+
+    var sendTextButton = document.getElementById('sendText');
+    var answerDiv = document.getElementById('answer');
+
+
+    startRecordingButton.addEventListener('click', startRecording);
+    stopRecordingButton.addEventListener('click', stopRecording);
+
+    sendTextButton.addEventListener('click', sendText);
+    var finalTranscript = '';
+
+    function startRecording() {
+        recognition.start();
+        console.log('Recording started...');
+    }
+
+    function stopRecording() {
+        recognition.stop();
+        console.log('Recording stopped...');
+    }
+
+    recognition.onresult = function (event) {
+        var interimTranscript = '';
+  
+
+        for (var i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                finalTranscript += event.results[i][0].transcript;
+            } else {
+                interimTranscript += event.results[i][0].transcript;
+            }
+        }
+        speechResultsDiv.innerHTML = '<p>Interim: ' + interimTranscript + '</p><p>Final: ' + finalTranscript + '</p>';
+    };
+
+    recognition.onerror = function (event) {
+        console.error('Speech recognition error:', event.error);
+    };
+
+    recognition.onend = function () {
+        console.log('Speech recognition ended...');
+    };
+
+
+
+
+    function sendText() {
+        // Send the finalTranscript to the server using an HTTP request (e.g., fetch or XMLHttpRequest)
+        fetch('/Home/SendText', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text: finalTranscript }),
+        })
+            .then(response => response.json())
+            .then(data => {
+                // Display the response in the answerDiv
+                answerDiv.innerHTML = '<p>Server Response: ' + data.answer + '</p>';
+                fetch('/Home/SynthesizeSpeech', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: data.answer }),
+                })
+                    .catch(error => console.error('Error triggering text-to-speech synthesis:', error));
+                finalTranscript = '';
+
+            })
+            .catch(error => console.error('Error sending text to server:', error));
+    }
+    
+
+
+    // var assessPronunciationButton = document.getElementById('assessPronunciation');
+    // var pronunciationResultsDiv = document.getElementById('pronunciationResults');
+
+    // assessPronunciationButton.addEventListener('click', assessPronunciation);
+
+    // function assessPronunciation() {
+    //     // Assuming finalTranscript contains the text for pronunciation assessment
+    //     fetch('/Home/AssessPronunciation', {
+    //         method: 'POST',
+    //         headers: {
+    //             'Content-Type': 'application/json',
+    //         },
+    //         body: JSON.stringify({ text: finalTranscript }),
+    //     })
+    //         .then(response => response.json())
+    //         .then(data => {
+    //             // Display the pronunciation assessment results
+    //             pronunciationResultsDiv.innerHTML = '<p>Pronunciation Assessment: ' + JSON.stringify(data) + '</p>';
+    //         })
+    //         .catch(error => console.error('Error assessing pronunciation:', error));
+    // }
+
+
+
+    // document.getElementById('assessButton').addEventListener('click', function () {
+    //     var textToAssess = document.getElementById('textToAssess').value;
+    //     recognition.stop();
+    //     console.log('Recording stopped...');
+
+    //     // Ensure that the text is not empty
+    //     if (textToAssess.trim() === "") {
+    //         document.getElementById('error').innerText = 'Please enter text for pronunciation assessment.';
+    //         return;
+    //     }
+
+    //     // Clear previous results
+    //     document.getElementById('pronScore').innerText = '';
+    //     document.getElementById('accScore').innerText = '';
+    //     document.getElementById('compScore').innerText = '';
+    //     document.getElementById('fluency').innerText = '';
+    //     document.getElementById('prosody').innerText = '';
+    //     document.getElementById('pronunciationResults').innerHTML = '';
+    //     document.getElementById('assessmentDetails').innerText = '';
+    //     document.getElementById('error').innerText = '';
+
+    //     // Make a POST request to the server
+    //     fetch('/Home/AssessPronunciation', {
+    //         method: 'POST',
+    //         headers: {
+    //             'Content-Type': 'application/json',
+    //         },
+    //         body: JSON.stringify({ text: textToAssess }),
+    //     })
+    //         .then(response => response.json())
+    //         .then(data => {
+    //             // Display the results
+    //             document.getElementById('pronScore').innerText = data.PronunciationScore.toFixed(2);
+    //             document.getElementById('accScore').innerText = data.AccuracyScore.toFixed(2);
+    //             document.getElementById('compScore').innerText = data.CompletenessScore.toFixed(2);
+    //             document.getElementById('fluency').innerText = data.FluencyScore.toFixed(2);
+    //             document.getElementById('prosody').innerText = data.ProsodyScore.toFixed(2);
+
+    //             var pronunciationResultsList = document.getElementById('pronunciationResults');
+    //             data.PronunciationResults.forEach(result => {
+    //                 var li = document.createElement('li');
+    //                 li.innerText = `${result.WordText} - ${result.ErrorType} - ${result.AccuracyScore.toFixed(2)}`;
+    //                 pronunciationResultsList.appendChild(li);
+    //             });
+
+    //             document.getElementById('assessmentDetails').innerText = data.Details;
+    //         })
+    //         .catch(error => {
+    //             // Display error message
+    //             document.getElementById('error').innerText = 'Error during pronunciation assessment.';
+    //             console.error('Error during pronunciation assessment:', error);
+    //         });
+    // });
+</script>
