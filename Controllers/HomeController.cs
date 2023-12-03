@@ -11,6 +11,12 @@ using Azure;
 using Azure.AI.TextAnalytics; // Add this line
 using System.Linq;
 using System;
+using Microsoft.Azure.Cosmos;
+using Newtonsoft.Json.Linq;
+using Azure.Storage.Blobs.Models;
+using Azure.Storage.Sas;
+using Azure.Storage;
+using Microsoft.WindowsAzure.Storage;
 
 
 
@@ -36,6 +42,8 @@ namespace dotnetproject.Controllers
             var model = new SpeechToTextModel();
             return View(model);
         }
+
+        private static SpeechSynthesizer _currentSynthesizer;
 
 
         private string DetectLanguage(string text)
@@ -70,137 +78,161 @@ namespace dotnetproject.Controllers
             }
         }
 
-        [HttpPost]
-        public async Task<IActionResult> ConvertSpeechToText()
+        [HttpPost("/saveAudio")]
+        public async Task<IActionResult> SaveAudio(IFormFile audio)
         {
             try
             {
-                var speechConfig = SpeechConfig.FromSubscription("8eed5c65ae94466babb63658d40fedb4", "westeurope");
+                var connectionString = "BlobEndpoint=https://openskystorage.blob.core.windows.net/;QueueEndpoint=https://openskystorage.queue.core.windows.net/;FileEndpoint=https://openskystorage.file.core.windows.net/;TableEndpoint=https://openskystorage.table.core.windows.net/;SharedAccessSignature=sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2024-01-01T02:47:28Z&st=2023-12-03T18:47:28Z&spr=https&sig=X8Zvc8%2F1jShVX6Q9st2xL5MD3xHryKJcuf6vwa84G1E%3D";
+                var containerName = "files";
+                var fileName = audio.FileName; // Берем имя файла из запроса
 
+                var storageAccount = CloudStorageAccount.Parse(connectionString);
+                var blobClient = storageAccount.CreateCloudBlobClient();
+                var container = blobClient.GetContainerReference(containerName);
+                var blockBlob = container.GetBlockBlobReference(fileName);
+
+                using (var audioStream = audio.OpenReadStream())
+                {
+                    await blockBlob.UploadFromStreamAsync(audioStream);
+                }
+
+                var audioUrl = blockBlob.Uri.ToString();
+                return Json(new { url = audioUrl });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { error = $"Error saving audio: {ex.Message}" });
+            }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> SpeechToText()
+        {
+            try
+            {
+                string blobName = "record.wav";
+                string containerName = "files";
+                //var connectionString = "BlobEndpoint=https://openskystorage.blob.core.windows.net/;QueueEndpoint=https://openskystorage.queue.core.windows.net/;FileEndpoint=https://openskystorage.file.core.windows.net/;TableEndpoint=https://openskystorage.table.core.windows.net/;SharedAccessSignature=sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2023-12-01T18:07:11Z&st=2023-12-01T10:07:11Z&spr=https&sig=iRANj65XO13hYqzUrmFwhd8nRL7qR%2Bf3zsO%2BRjiOu7c%3D";
+
+                //var blobServiceClient = new BlobServiceClient(connectionString);
+                //var blobContainerClient = blobClient.GetBlobContainerClient(containerName);
+
+                var blobServiceClient = new BlobServiceClient("BlobEndpoint=https://openskystorage.blob.core.windows.net/;QueueEndpoint=https://openskystorage.queue.core.windows.net/;FileEndpoint=https://openskystorage.file.core.windows.net/;TableEndpoint=https://openskystorage.table.core.windows.net/;SharedAccessSignature=sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2023-12-01T18:07:11Z&st=2023-12-01T10:07:11Z&spr=https&sig=iRANj65XO13hYqzUrmFwhd8nRL7qR%2Bf3zsO%2BRjiOu7c%3D");
+                var blobContainerClient = blobServiceClient.GetBlobContainerClient(containerName);
+                var blobClient = blobContainerClient.GetBlobClient(blobName);
+
+                var sasBuilder = new BlobSasBuilder
+                {
+                    BlobContainerName = containerName,
+                    BlobName = blobName,
+                    Resource = "b", // "b" for blob
+                    ExpiresOn = DateTimeOffset.UtcNow.AddHours(1), // Adjust the expiration time as needed
+                };
+
+                sasBuilder.SetPermissions(BlobSasPermissions.Read);
+                var blobUriWithSas = $"{blobClient.Uri}?{sasBuilder.ToSasQueryParameters(new StorageSharedKeyCredential("openskystorage", "guliif6fb1rhS22dA8IcRSmDqwkMTGUJcUyu2tqda3g7ULLrwm4YUqBnC3sFEkyNjIntYVs50J7X+ASt52ZrVQ=="))}";
+
+                // Download audio stream
+                var audioStream = new MemoryStream();
+                var response = await blobClient.OpenReadAsync();
+                await response.CopyToAsync(audioStream);
+                audioStream.Seek(0, SeekOrigin.Begin);
+
+
+                Console.WriteLine($"Received {audioStream.Length} bytes of audio data.");
+
+                // Speech recognition configuration
+                var speechConfig = SpeechConfig.FromSubscription("8eed5c65ae94466babb63658d40fedb4", "westeurope");
                 speechConfig.SpeechRecognitionLanguage = "en-US";
 
-                using (var audioStream = Request.Body)
-                using (var audioConfig = AudioConfig.FromStreamInput(AudioInputStream.CreatePushStream()))
-                using (var recognizer = new SpeechRecognizer(speechConfig, audioConfig))
+                // Create speech recognizer
+                using (var audioConfigStream = AudioInputStream.CreatePushStream())
+                using (var audioConfig = AudioConfig.FromStreamInput(audioConfigStream))
+                using (var speechRecognizer = new SpeechRecognizer(speechConfig, audioConfig))
                 {
-                    Console.WriteLine("SpeechRecognizer created successfully.");
-
-                    // Start continuous recognition
-                    var stopRecognition = new TaskCompletionSource<int>();
-                    recognizer.Recognizing += (s, e) =>
+                    // Write audio data to the stream
+                    byte[] readBytes = new byte[1024];
+                    int bytesRead;
+                    do
                     {
-                        // Process intermediate recognition results in real-time
-                        Console.WriteLine($"Interim result: {e.Result.Text}");
-                        // You can send this intermediate result to the client using SignalR
-                    };
-
-                    recognizer.Recognized += (s, e) =>
-                    {
-                        if (e.Result.Reason == ResultReason.RecognizedSpeech)
+                        bytesRead = audioStream.Read(readBytes, 0, readBytes.Length);
+                        if (bytesRead > 0)
                         {
-                            Console.WriteLine($"Final result: {e.Result.Text}");
-                            // You can send this final result to the client using SignalR
+                            audioConfigStream.Write(readBytes, bytesRead);
                         }
-                        else if (e.Result.Reason == ResultReason.NoMatch)
-                        {
-                            Console.WriteLine("No speech could be recognized.");
-                        }
-                    };
+                    } while (bytesRead > 0);
 
-                    recognizer.Canceled += (s, e) =>
-                    {
-                        Console.WriteLine($"CANCELED: Reason={e.Reason}");
+                    Console.WriteLine($"First 100 bytes of audio data: {BitConverter.ToString(readBytes.Take(100).ToArray())}");
 
-                        if (e.Reason == CancellationReason.Error)
-                        {
-                            Console.WriteLine($"CANCELED: ErrorCode={e.ErrorCode}");
-                            Console.WriteLine($"CANCELED: ErrorDetails={e.ErrorDetails}");
-                        }
+                    // Recognize speech
+                    var result = await speechRecognizer.RecognizeOnceAsync();
+                    Console.WriteLine($"RECOGNIZED: Text={result.Text}");
+                    Console.WriteLine($"Result status: {result.Reason}");
 
-                        // Signal the task completion to stop the recognition
-                        stopRecognition.TrySetResult(0);
-                    };
-
-                    // Start recognition
-                    await recognizer.StartContinuousRecognitionAsync();
-
-                    // Continue processing until the task is signaled to stop
-                    // (e.g., after receiving a stop request from the client)
-                    await stopRecognition.Task;
-
-                    // Stop recognition
-                    await recognizer.StopContinuousRecognitionAsync();
-                    string detectedLanguage = "en"; // Replace with the actual detected language
-                    var speechToTextModel = new SpeechToTextModel { Language = detectedLanguage };
-
-                    // Call SendText method with the detected language
-                    var sendTextResponse = await SendText(speechToTextModel);
-
-                    return sendTextResponse;
-
-                    //return Json(new { Status = "Recognition stopped successfully" });
-
-
+                    // Return success response
+                    return Json(new { Answer = result.Text });
                 }
             }
             catch (Exception ex)
             {
-                return Json(new { Error = $"Error during speech recognition: {ex.Message}" });
+                Console.WriteLine($"An error occurred: {ex}");
+                return StatusCode(500, new { Error = $"An error occurred: {ex.Message}" });
             }
         }
-
 
         [HttpPost]
         public async Task<IActionResult> SendText([FromBody] SpeechToTextModel model)
         {
             try
             {
-                // Get the text from the model
-                string userText = model.Text;
+                    // Get the text from the model
+                    string userText = "You are a helpful assistant that aids in learning foreign languages." + model.Text;
 
-                // Your OpenAI settings
-                string proxyUrl1 = "https://aoai.hacktogether.net";
-                string key = "42e4f3a0-9ecc-47de-aca0-3702df81b334";
+                    // Your OpenAI settings
+                    string proxyUrl1 = "https://aoai.hacktogether.net";
+                    string key = "42e4f3a0-9ecc-47de-aca0-3702df81b334";
 
-                // The full url is appended by /v1/api
-                Uri proxyUrl = new Uri(proxyUrl1 + "/v1/api");
+                    // The full url is appended by /v1/api
+                    Uri proxyUrl = new Uri(proxyUrl1 + "/v1/api");
 
-                // The full key is appended by "/YOUR-GITHUB-ALIAS"
-                AzureKeyCredential token = new AzureKeyCredential(key + "/artemcodit");
+                    // The full key is appended by "/YOUR-GITHUB-ALIAS"
+                    AzureKeyCredential token = new AzureKeyCredential(key + "/artemcodit");
 
-                // Instantiate the client with the "full" values for the url and key/token
-                OpenAIClient openAIClient = new OpenAIClient(proxyUrl, token);
+                    // Instantiate the client with the "full" values for the url and key/token
+                    OpenAIClient openAIClient = new OpenAIClient(proxyUrl, token);
 
-                ChatCompletionsOptions completionOptions = new ChatCompletionsOptions
-                {
-                    MaxTokens = 150,
-                    Temperature = 0.5f,
-                    NucleusSamplingFactor = 0.95f,
-                    DeploymentName = "gpt-35-turbo"
-                };
+                    ChatCompletionsOptions completionOptions = new ChatCompletionsOptions
+                    {
+                        MaxTokens = 150,
+                        Temperature = 0.7f,
+                        NucleusSamplingFactor = 0.95f,
+                        DeploymentName = "gpt-35-turbo"
+                    };
 
-                // Add system and user messages
-                completionOptions.Messages.Add(new ChatMessage(ChatRole.User, userText));
+                    // Add system and user messages
+                    completionOptions.Messages.Add(new ChatMessage(ChatRole.User, userText));
 
-                // Get response from Azure OpenAI
-                var response = await openAIClient.GetChatCompletionsAsync(completionOptions);
+                    // Get response from Azure OpenAI
+                    var response = await openAIClient.GetChatCompletionsAsync(completionOptions);
 
-                // Access the generated completion content if there is a 'Choices' property
-                if (response.Value != null && response.Value.Choices.Count > 0)
-                {
-                    string completionContent = response.Value.Choices[0].Message.Content;
+                    // Access the generated completion content if there is a 'Choices' property
+                    if (response.Value != null && response.Value.Choices.Count > 0)
+                    {
+                        string completionContent = response.Value.Choices[0].Message.Content;
 
-                    // You can do further processing with the generated completionContent
+                        // You can do further processing with the generated completionContent
 
-                    //model.Language = language;
+                        //model.Language = language;
 
-                    // Return the response to the client
-                    return Json(new { Answer = completionContent });
-                }
-                else
-                {
-                    return Json(new { Error = "No valid response received from Azure OpenAI." });
-                }
+                        // Return the response to the client
+                        return Json(new { Answer = completionContent });
+                    }
+                    else
+                    {
+                        return Json(new { Error = "No valid response received from Azure OpenAI." });
+                    }
+                
             }
             catch (Exception ex)
             {
@@ -208,12 +240,12 @@ namespace dotnetproject.Controllers
             }
         }
 
-
         [HttpPost]
         public async Task<IActionResult> SynthesizeSpeech([FromBody] SpeechToTextModel model)
         {
             try
             {
+                
                 Console.WriteLine($"Received language in SynthesizeSpeech: {model.Language}");
 
 
@@ -237,34 +269,39 @@ namespace dotnetproject.Controllers
 
                 config.SpeechSynthesisVoiceName = voiceName;
 
-
-
-                using (var synthesizer = new SpeechSynthesizer(config))
+                if (_currentSynthesizer != null)
                 {
-                    using (var result = await synthesizer.SpeakTextAsync(model.Text))
-                    {
-                        if (result.Reason == ResultReason.SynthesizingAudioCompleted)
-                        {
-                            Console.WriteLine($"Speech synthesized for text [{model.Text}]");
-                            return Json(new { Status = "Speech synthesis completed", Language = language });
-                        }
-                        else if (result.Reason == ResultReason.Canceled)
-                        {
-                            var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
-                            Console.WriteLine($"CANCELED: Reason={cancellation.Reason}");
-
-                            if (cancellation.Reason == CancellationReason.Error)
-                            {
-                                Console.WriteLine($"CANCELED: ErrorCode={cancellation.ErrorCode}");
-                                Console.WriteLine($"CANCELED: ErrorDetails=[{cancellation.ErrorDetails}]");
-                                Console.WriteLine($"CANCELED: Did you update the subscription info?");
-                            }
-
-                            return Json(new { Error = "Speech synthesis canceled or encountered an error" });
-                        }
-                    }
+                    await _currentSynthesizer.StopSpeakingAsync();
+                    _currentSynthesizer.Dispose();
                 }
 
+                _currentSynthesizer = new SpeechSynthesizer(config);
+
+                using (var result = await _currentSynthesizer.SpeakTextAsync(model.Text))
+                {
+                    if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+                    {
+                            if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+                            {
+                                Console.WriteLine($"Speech synthesized for text [{model.Text}]");
+                                return Json(new { Status = "Speech synthesis completed", Language = language });
+                            }
+                            else if (result.Reason == ResultReason.Canceled)
+                            {
+                                var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+                                Console.WriteLine($"CANCELED: Reason={cancellation.Reason}");
+
+                                if (cancellation.Reason == CancellationReason.Error)
+                                {
+                                    Console.WriteLine($"CANCELED: ErrorCode={cancellation.ErrorCode}");
+                                    Console.WriteLine($"CANCELED: ErrorDetails=[{cancellation.ErrorDetails}]");
+                                    Console.WriteLine($"CANCELED: Did you update the subscription info?");
+                                }
+
+                                return Json(new { Error = "Speech synthesis canceled or encountered an error" });
+                            }
+                        }
+                    }
                 // Add a default return statement if needed
                 return Json(new { Error = "Unexpected error during speech synthesis" });
             }
