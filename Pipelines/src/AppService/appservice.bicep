@@ -4,7 +4,7 @@ param environmentName string
 param location string
 
 
-param name string = 'dotnethackathon'
+param name string = 'yourwebname987'
 
 var abbrs = loadJsonContent('./../Extra/abbreviations.json')
 var resourceName = toLower('${abbrs.webApp}${name}-${environmentName}')

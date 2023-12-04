@@ -1,7 +1,7 @@
 param environmentName string
 param location string
 
-param name string = 'abc123plan'
+param name string = 'abc123plan987'
 
 var abbrs = loadJsonContent('./../Extra/abbreviations.json')
 var resourceName = toLower('${abbrs.appServicePlan}${name}-${environmentName}')

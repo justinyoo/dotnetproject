@@ -84,6 +84,3 @@ stages:
                       component: ${{component}}
                       environment: ${{environment}}
 
-#This sets the provide for a scalable pipeline design that provides a uniform development experience and minimizes configuration effort. 
-#This post explores such a design.
-#https://www.codit.eu/blog/using-yaml-templates-to-reduce-duplication-in-azure-pipelines/
