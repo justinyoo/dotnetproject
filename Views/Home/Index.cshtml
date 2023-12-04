@@ -29,9 +29,6 @@
     <div id="answer"></div>
 </div>
 
-<input type="file" id="fileInput" accept=".wav" />
-<button onclick="convertSpeechToText()">Convert to Text</button>
-
 <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
 
 <script>
@@ -47,92 +44,43 @@
     var answerDiv = document.getElementById('answer');
 
 
-    // startRecordingButton.addEventListener('click', startRecording);
-    // stopRecordingButton.addEventListener('click', stopRecording);
-
-
-    var mediaRecorder; // Глобальная переменная для хранения объекта MediaRecorder
-    var chunks = [];
-    var sessionId = generateSessionId();
-
-    function generateSessionId() {
-        return 'session_' + Date.now();
-    }
+    startRecordingButton.addEventListener('click', startRecording);
+    stopRecordingButton.addEventListener('click', stopRecording);
 
     sendTextButton.addEventListener('click', sendText);
     var finalTranscript = '';
 
     function startRecording() {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(function (stream) {
-                mediaRecorder = new MediaRecorder(stream);
-
-                mediaRecorder.ondataavailable = function (e) {
-                    if (e.data.size > 0) {
-                        chunks.push(e.data);
-                    }
-                };
-
-                mediaRecorder.onstop = function () {
-                    var audioBlob = new Blob(chunks, { type: 'audio/wav' });
-                    var formData = new FormData();
-                    formData.append('audio', audioBlob, sessionId + '_recording.wav');
-
-                    fetch('/saveAudio', {
-                        method: 'POST',
-                        body: formData
-                    })
-                        .then(response => response.json())
-                        .then(data => {
-                            console.log('Audio saved:', data.url);
-                        })
-                        .catch(error => console.error('Error saving audio:', error));
-
-                    // Снова отображаем значок микрофона
-                    startRecordingButton.style.display = 'block';
-                };
-
-                // Теперь, когда все готово, начинайте запись
-                mediaRecorder.start();
-                console.log('Recording started...');
-            })
-            .catch(function (err) {
-                console.error('Error accessing microphone:', err);
-            });
+        recognition.start();
+        console.log('Recording started...');
     }
 
-    startRecordingButton.addEventListener('click', startRecording);
+    function stopRecording() {
+        recognition.stop();
+        console.log('Recording stopped...');
+    }
 
-
-    stopRecordingButton.addEventListener('click', function () {
-        // Остановите запись, когда пользователь нажимает "Stop"
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-            mediaRecorder.stop();
-            console.log('Recording stopped...');
-        }
-    });
-
-    // recognition.onresult = function (event) {
-    //     var interimTranscript = '';
+    recognition.onresult = function (event) {
+        var interimTranscript = '';
   
 
-    //     for (var i = event.resultIndex; i < event.results.length; ++i) {
-    //         if (event.results[i].isFinal) {
-    //             finalTranscript += event.results[i][0].transcript;
-    //         } else {
-    //             interimTranscript += event.results[i][0].transcript;
-    //         }
-    //     }
-    //     speechResultsDiv.innerHTML = '<p>Interim: ' + interimTranscript + '</p><p>Final: ' + finalTranscript + '</p>';
-    // };
+        for (var i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                finalTranscript += event.results[i][0].transcript;
+            } else {
+                interimTranscript += event.results[i][0].transcript;
+            }
+        }
+        speechResultsDiv.innerHTML = '<p>Interim: ' + interimTranscript + '</p><p>Final: ' + finalTranscript + '</p>';
+    };
 
-    // recognition.onerror = function (event) {
-    //     console.error('Speech recognition error:', event.error);
-    // };
+    recognition.onerror = function (event) {
+        console.error('Speech recognition error:', event.error);
+    };
 
-    // recognition.onend = function () {
-    //     console.log('Speech recognition ended...');
-    // };
+    recognition.onend = function () {
+        console.log('Speech recognition ended...');
+    };
 
 
 
@@ -166,31 +114,4 @@
 
 
 
-    function convertSpeechToText() {
-        // Assuming you have the audio data or URL
-        var apiUrl = 'https://prod-227.westeurope.logic.azure.com:443/workflows/588e1348ec1b4767acc3b4c2e48ef343/triggers/manual/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=r60ZuRI3Cvf4ZdK2IDhLq1eZgxoCESzqDtgVeXuSwaI';
-
-        fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({}),
-        })
-            .then(response => {
-                if (!response.ok) {
-                    return response.text().then(errorText => {
-                        throw new Error(`HTTP error! Status: ${response.status}, Error: ${errorText}`);
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Speech-to-text result:', data.answer);
-            })
-            .catch(error => {
-                console.error('Error sending audio for speech-to-text:', error);
-                // Add any additional error handling here
-            });
-    }
 </script>
