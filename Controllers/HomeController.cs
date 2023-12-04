@@ -2,10 +2,16 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using Microsoft.CognitiveServices.Speech;
+using Microsoft.CognitiveServices.Speech.Audio;
+using System.IO;
 using Azure.AI.OpenAI;
 using Azure;
 //using Microsoft.CognitiveServices.Speech.PronunciationAssessment;
 using Azure.AI.TextAnalytics; // Add this line
+using System.Linq;
+using System;
+
+
 
 
 
