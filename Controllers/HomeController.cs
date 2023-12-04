@@ -2,21 +2,11 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using Microsoft.CognitiveServices.Speech;
-using Microsoft.CognitiveServices.Speech.Audio;
-using Azure.Storage.Blobs;
-using System.IO;
 using Azure.AI.OpenAI;
 using Azure;
 //using Microsoft.CognitiveServices.Speech.PronunciationAssessment;
 using Azure.AI.TextAnalytics; // Add this line
-using System.Linq;
-using System;
-using Microsoft.Azure.Cosmos;
-using Newtonsoft.Json.Linq;
-using Azure.Storage.Blobs.Models;
-using Azure.Storage.Sas;
-using Azure.Storage;
-using Microsoft.WindowsAzure.Storage;
+
 
 
 
@@ -41,8 +31,8 @@ namespace dotnetproject.Controllers
 
         private string DetectLanguage(string text)
         {
-            string key = "094f202e5f7c40a5a6902df0dfa77068";
-            Uri endpoint = new Uri("https://textanalyticsfortest.cognitiveservices.azure.com/");
+            string key = "<YOUR-KEY>";
+            Uri endpoint = new Uri("<YOUR-ENDPOINT-URI>");
             AzureKeyCredential credentials = new AzureKeyCredential(key);
             TextAnalyticsClient textAnalyticsClient = new TextAnalyticsClient(endpoint, credentials);
 
@@ -73,81 +63,6 @@ namespace dotnetproject.Controllers
 
 
         [HttpPost]
-        public async Task<IActionResult> SpeechToText()
-        {
-            try
-            {
-                string blobName = "record.wav";
-                string containerName = "files";
-                //var connectionString = "BlobEndpoint=https://openskystorage.blob.core.windows.net/;QueueEndpoint=https://openskystorage.queue.core.windows.net/;FileEndpoint=https://openskystorage.file.core.windows.net/;TableEndpoint=https://openskystorage.table.core.windows.net/;SharedAccessSignature=sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2023-12-01T18:07:11Z&st=2023-12-01T10:07:11Z&spr=https&sig=iRANj65XO13hYqzUrmFwhd8nRL7qR%2Bf3zsO%2BRjiOu7c%3D";
-
-                //var blobServiceClient = new BlobServiceClient(connectionString);
-                //var blobContainerClient = blobClient.GetBlobContainerClient(containerName);
-
-                var blobServiceClient = new BlobServiceClient("BlobEndpoint=https://openskystorage.blob.core.windows.net/;QueueEndpoint=https://openskystorage.queue.core.windows.net/;FileEndpoint=https://openskystorage.file.core.windows.net/;TableEndpoint=https://openskystorage.table.core.windows.net/;SharedAccessSignature=sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2023-12-01T18:07:11Z&st=2023-12-01T10:07:11Z&spr=https&sig=iRANj65XO13hYqzUrmFwhd8nRL7qR%2Bf3zsO%2BRjiOu7c%3D");
-                var blobContainerClient = blobServiceClient.GetBlobContainerClient(containerName);
-                var blobClient = blobContainerClient.GetBlobClient(blobName);
-
-                var sasBuilder = new BlobSasBuilder
-                {
-                    BlobContainerName = containerName,
-                    BlobName = blobName,
-                    Resource = "b", // "b" for blob
-                    ExpiresOn = DateTimeOffset.UtcNow.AddHours(1), // Adjust the expiration time as needed
-                };
-
-                sasBuilder.SetPermissions(BlobSasPermissions.Read);
-                var blobUriWithSas = $"{blobClient.Uri}?{sasBuilder.ToSasQueryParameters(new StorageSharedKeyCredential("openskystorage", "guliif6fb1rhS22dA8IcRSmDqwkMTGUJcUyu2tqda3g7ULLrwm4YUqBnC3sFEkyNjIntYVs50J7X+ASt52ZrVQ=="))}";
-
-                // Download audio stream
-                var audioStream = new MemoryStream();
-                var response = await blobClient.OpenReadAsync();
-                await response.CopyToAsync(audioStream);
-                audioStream.Seek(0, SeekOrigin.Begin);
-
-
-                Console.WriteLine($"Received {audioStream.Length} bytes of audio data.");
-
-                // Speech recognition configuration
-                var speechConfig = SpeechConfig.FromSubscription("8eed5c65ae94466babb63658d40fedb4", "westeurope");
-                speechConfig.SpeechRecognitionLanguage = "en-US";
-
-                // Create speech recognizer
-                using (var audioConfigStream = AudioInputStream.CreatePushStream())
-                using (var audioConfig = AudioConfig.FromStreamInput(audioConfigStream))
-                using (var speechRecognizer = new SpeechRecognizer(speechConfig, audioConfig))
-                {
-                    // Write audio data to the stream
-                    byte[] readBytes = new byte[1024];
-                    int bytesRead;
-                    do
-                    {
-                        bytesRead = audioStream.Read(readBytes, 0, readBytes.Length);
-                        if (bytesRead > 0)
-                        {
-                            audioConfigStream.Write(readBytes, bytesRead);
-                        }
-                    } while (bytesRead > 0);
-
-                    Console.WriteLine($"First 100 bytes of audio data: {BitConverter.ToString(readBytes.Take(100).ToArray())}");
-
-                    // Recognize speech
-                    var result = await speechRecognizer.RecognizeOnceAsync();
-                    Console.WriteLine($"RECOGNIZED: Text={result.Text}");
-                    Console.WriteLine($"Result status: {result.Reason}");
-
-                    // Return success response
-                    return Json(new { Answer = result.Text });
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"An error occurred: {ex}");
-                return StatusCode(500, new { Error = $"An error occurred: {ex.Message}" });
-            }
-        }
-
-        [HttpPost]
         public async Task<IActionResult> SendText([FromBody] SpeechToTextModel model)
         {
             try
@@ -156,14 +71,14 @@ namespace dotnetproject.Controllers
                     string userText = model.Text;
 
                     // Your OpenAI settings
-                    string proxyUrl1 = "https://aoai.hacktogether.net";
-                    string key = "42e4f3a0-9ecc-47de-aca0-3702df81b334";
+                    string proxyUrl1 = "<YOUR-URL>";
+                    string key = "<YOUR-KEY>";
 
                     // The full url is appended by /v1/api
                     Uri proxyUrl = new Uri(proxyUrl1 + "/v1/api");
 
                     // The full key is appended by "/YOUR-GITHUB-ALIAS"
-                    AzureKeyCredential token = new AzureKeyCredential(key + "/artemcodit");
+                    AzureKeyCredential token = new AzureKeyCredential(key + "/key");
 
                     // Instantiate the client with the "full" values for the url and key/token
                     OpenAIClient openAIClient = new OpenAIClient(proxyUrl, token);
@@ -216,8 +131,8 @@ namespace dotnetproject.Controllers
 
 
                 // Assuming model.Text contains the text to be synthesized
-                string subscriptionKey = "8eed5c65ae94466babb63658d40fedb4";
-                string subscriptionRegion = "westeurope";
+                string subscriptionKey = "<YOUR-KEY>";
+                string subscriptionRegion = "<YOUR-REGION>";
 
 
                 // Detect language
