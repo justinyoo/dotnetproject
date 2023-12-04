@@ -153,7 +153,7 @@ namespace dotnetproject.Controllers
             try
             {
                     // Get the text from the model
-                    string userText = "You are a helpful assistant that aids in learning foreign languages." + model.Text;
+                    string userText = model.Text;
 
                     // Your OpenAI settings
                     string proxyUrl1 = "https://aoai.hacktogether.net";
