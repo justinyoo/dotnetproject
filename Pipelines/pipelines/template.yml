@@ -1,0 +1,89 @@
+parameters:
+  - name: config
+    type: object
+  - name: buildVariableGroups
+    type: object
+    default: []
+  - name: components
+    type: object
+    default: []      
+  - name: deployVariableGroups
+    type: object
+    default: []    
+  - name: environments
+    type: object
+    default: 
+    - name: dev  
+      fullName: Development
+      azureServiceConnection: 'connectionName'
+
+variables:
+  - name: basePath
+    value: $(Build.Repository.LocalPath)/${{parameters.config.basePath}}  
+  - ${{if gt(length(parameters.buildVariableGroups),0) }}:
+    - ${{ each variableGroup in parameters.buildVariableGroups }}:
+      - group: ${{variableGroup}}
+
+stages:
+  - ${{if eq(parameters.config.isBuild, true)}}:
+
+### BUILD STAGE ###
+    - stage: Build
+      jobs:
+        # PIPELINERESOURCES
+        - job: PublishPipelineResources
+          displayName: Publish pipeline resources as artifact
+          steps:       
+          - task: PublishPipelineArtifact@1
+            displayName: Publish pipeline artifacts for further consumption
+            inputs:
+              targetPath: '$(Build.Repository.LocalPath)/pipelines'
+              artifact: 'Pipeline'
+              publishLocation: 'pipeline'
+        - ${{ each component in parameters.components }}:
+          - job: 
+            displayName: 'Build - ${{component.name}}'
+            steps:
+            - template: Build/${{component.type}}.yml
+              parameters:
+                basePath: $(basePath)
+                component: ${{component}}
+
+
+### DEPLOY STAGES ###
+  - ${{if eq(parameters.config.isDeploy, true)}}:                
+    - ${{ each environment in parameters.environments }}:
+      - stage: Deploy_${{environment.name}}
+        displayName: Deploy - ${{environment.name}}
+        dependsOn:
+          - ${{ each dependency in environment.dependsOn }}:
+            - Deploy_${{dependency}}
+        ${{if ne(environment.condition, '')}}:
+          condition: and(succeeded(), ${{environment.condition}})
+        ${{if eq(environment.condition, '')}}:
+          condition: succeeded()
+        variables:
+        - group: infra.${{environment.name}}
+        - ${{ each variableGroup in parameters.deployVariableGroups }}:
+          - group: ${{variableGroup}}
+          #- group: variableGroup${{environment.name}}
+        jobs:
+        - ${{ each component in parameters.components }}:
+          - deployment: Deploy_${{component.name}}_${{environment.name}}
+            dependsOn:
+            - ${{ each dependency in component.dependsOn }}:
+              - Deploy_${{dependency}}_${{environment.name}} 
+            displayName: Deploy ${{component.name}}
+            environment: ${{environment.fullName}}
+            strategy:
+              runOnce:
+                deploy:
+                  steps:
+                  - template: Deploy/${{component.type}}.yml
+                    parameters:
+                      component: ${{component}}
+                      environment: ${{environment}}
+
+#This sets the provide for a scalable pipeline design that provides a uniform development experience and minimizes configuration effort. 
+#This post explores such a design.
+#https://www.codit.eu/blog/using-yaml-templates-to-reduce-duplication-in-azure-pipelines/

@@ -1,0 +1,21 @@
+name: $(Build.DefinitionName)-$(Build.BuildId)
+
+pool:
+  vmImage: 'windows-latest'
+
+trigger:
+  branches:
+    include: 
+    - main
+    - feature/*
+  paths: 
+    include: 
+    - /src
+
+extends: 
+  template: solution.yml
+  parameters: 
+    config: 
+      basePath: /src
+      isBuild: true
+      isDeploy: false

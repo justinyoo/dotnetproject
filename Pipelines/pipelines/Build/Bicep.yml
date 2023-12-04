@@ -1,0 +1,41 @@
+parameters:
+- name: basePath
+  type: string
+- name: component 
+  type: object 
+
+steps:
+- task: PowerShell@2
+  displayName: 'Compile Bicep File'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $bicepFilePath = "${{parameters.basePath}}\${{parameters.component.resourcesPath}}\${{parameters.component.templateName}}.bicep"
+      $jsonFilePath = "${{parameters.basePath}}\${{parameters.component.resourcesPath}}\${{parameters.component.templateName}}.json"
+      az bicep build --file $bicepFilePath --outfile $jsonFilePath
+
+- task: CopyFiles@2
+  displayName: 'Copy Component Files'
+  inputs:
+    sourceFolder: ${{parameters.basePath}}\${{parameters.component.resourcesPath}}
+    targetFolder: $(Build.ArtifactStagingDirectory)
+
+- task: CopyFiles@2
+  displayName: 'Copy Extra'
+  inputs:
+    sourceFolder: ${{parameters.basePath}}\Extra
+    targetFolder: $(Build.ArtifactStagingDirectory)/Extra
+
+- task: PublishPipelineArtifact@1
+  displayName: 'Publish Component Resources'
+  inputs:
+    targetPath: '$(Build.ArtifactStagingDirectory)'
+    artifact: '${{parameters.component.name}}'
+    publishLocation: 'pipeline'
+
+- task: PublishPipelineArtifact@1
+  displayName: 'Publish Extra'
+  inputs:
+    targetPath: '$(Build.ArtifactStagingDirectory)/Extra'
+    artifact: 'Extra'
+    publishLocation: 'pipeline'

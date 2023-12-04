@@ -1,0 +1,32 @@
+parameters:
+- name: environment
+  displayName: Specific Environment
+  type: string
+  default: dev
+  values:
+  - dev
+
+name: $(Build.DefinitionName)-$(Build.BuildId)
+
+pool:
+  vmImage: 'windows-latest'
+
+trigger: none
+
+resources:
+  pipelines:
+    - pipeline: BuildPipeline
+      source: CI
+      trigger: 
+        branches:
+          include: 
+          - main
+          - feature/*
+         
+extends: 
+  template: solution.yml
+  parameters:
+    config: 
+      basePath: /src
+      isBuild: false
+      isDeploy: true

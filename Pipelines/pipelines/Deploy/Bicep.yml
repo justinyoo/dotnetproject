@@ -1,0 +1,45 @@
+﻿parameters:
+- name: component 
+  type: object 
+- name: environment 
+  type: object
+
+steps:  
+- task: qetza.replacetokens.replacetokens-task.replacetokens@5
+  displayName: 'Replace tokens'
+  inputs:
+    rootDirectory: '$(Pipeline.Workspace)/BuildPipeline/${{parameters.component.name}}'
+    targetFiles: '*.parameters.json'
+    encoding: 'auto'
+    writeBOM: true
+    actionOnMissing: 'warn'
+    keepToken: false
+    tokenPrefix: '#{'
+    tokenSuffix: '}#'
+    useLegacyPattern: false
+    emptyValue: 
+    enableTransforms: false
+    enableTelemetry: false  
+
+- task: AzureResourceGroupDeployment@3
+  displayName: 'Deploy Bicep template'
+  inputs:
+    azureResourceManagerConnection: '${{parameters.environment.azureServiceConnection}}'
+    subscriptionId: '$(Infra_SubscriptionId)'
+    resourceGroupName: '${{parameters.component.resourceGroupName}}'
+    location: '$(Infra_Region_Primary)'
+    csmFile: '$(Pipeline.Workspace)/BuildPipeline/${{parameters.component.name}}/${{parameters.component.templateName}}.bicep'
+    csmParametersFile: '$(Pipeline.Workspace)/BuildPipeline/${{parameters.component.name}}/${{parameters.component.templateName}}.parameters.json'
+    overrideParameters: '${{parameters.component.overrideParameters}}'
+    deploymentOutputs: ArmOutputs
+
+- task: PowerShell@2
+  displayName: 'Update Variable Group'
+  env:
+    system_accesstoken: $(System.AccessToken)
+  inputs:
+    targetType: 'inline'
+    script: |
+      Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+      Install-Module -Name Arcus.Scripting.DevOps -Repository PSGallery -AllowClobber
+      Set-AzDevOpsArmOutputsToVariableGroup -VariableGroupName ${{parameters.component.armOutputsToVariableGroupName}}.$(Infra_Environment_ShortName) -ArmOutputsEnvironmentVariableName ${{parameters.component.armOutputsEnvironmentVariableName}} -UpdateVariablesForCurrentJob

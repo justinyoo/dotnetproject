@@ -1,0 +1,59 @@
+﻿parameters:
+- name: config 
+  type: object 
+
+extends: 
+  template: /pipelines/template.yml
+  parameters: 
+    config: ${{parameters.config}}
+
+
+    components:
+    - type: Bicep
+      name: AIService
+      resourcesPath: AIService
+      templateName: aiservice
+      resourceGroupName: $(Infra_ResourceGroup_Name)
+      armOutputsToVariableGroupName: infra
+      armOutputsEnvironmentVariableName: ArmOutputs
+      dependsOn: 
+ 
+    - type: Bicep
+      name: LanguageService
+      resourcesPath: LanguageService
+      templateName: language
+      resourceGroupName: $(Infra_ResourceGroup_Name)
+      armOutputsToVariableGroupName: infra
+      armOutputsEnvironmentVariableName: ArmOutputs
+      dependsOn:
+      - AIService
+ 
+    - type: Bicep
+      name: CognitiveService
+      resourcesPath: CognitiveService
+      templateName: cognitive
+      resourceGroupName: $(Infra_ResourceGroup_Name)
+      armOutputsToVariableGroupName: infra
+      armOutputsEnvironmentVariableName: ArmOutputs
+      dependsOn:
+      - LanguageService
+
+    - type: Bicep
+      name: AppServicePlan
+      resourcesPath: AppServicePlan
+      templateName: appserviceplan
+      resourceGroupName: $(Infra_ResourceGroup_Name)
+      armOutputsToVariableGroupName: infra
+      armOutputsEnvironmentVariableName: ArmOutputs
+      dependsOn: 
+      - LanguageService
+
+    - type: Bicep
+      name: AppService
+      resourcesPath: AppService
+      templateName: appservice
+      resourceGroupName: $(Infra_ResourceGroup_Name)
+      armOutputsToVariableGroupName: infra
+      armOutputsEnvironmentVariableName: ArmOutputs
+      dependsOn: 
+      - AppServicePlan

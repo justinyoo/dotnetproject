@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "appServicePlan": {
+      "value": "/subscriptions/#{Infra_SubscriptionId}#/resourceGroups/#{Infra_ResourceGroup_Name}#/providers/Microsoft.Web/serverfarms/#{Infra_AppServicePlan_Name}#"
+    },
+    "location": {
+      "value": "#{Infra_Region_Primary}#"
+    },
+    "environmentName": {
+      "value": "#{Infra_Environment_ShortName}#"
+    }
+  }
+}
