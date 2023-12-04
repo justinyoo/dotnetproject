@@ -12,15 +12,6 @@ using System.Linq;
 using System;
 
 
-
-
-
-
-
-
-
-
-
 namespace dotnetproject.Controllers
 {
     public class HomeController : Controller
